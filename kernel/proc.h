@@ -117,4 +117,6 @@ struct proc {
   int time_slice_used;        // Time used in current slice
   int last_scheduled;         // Last time this process was scheduled
   int queue_entry_time;       // When process entered current queue (for FIFO within queue)
+  int preempted;              // Flag: was this process preempted?
+  int total_preemptions;      // Count of times preempted
 };

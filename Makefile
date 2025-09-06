@@ -156,8 +156,9 @@ UPROGS=\
 	$U/_mlfqtest\
 	$U/_preempttest\
 	$U/_fullmlfqtest\
-	$U/_starvationtest
-
+	$U/_starvationtest\
+	$U/_longtest\
+	$U/_q3test
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)

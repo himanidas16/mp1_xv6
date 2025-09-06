@@ -171,9 +171,12 @@ clockintr()
     release(&tickslock);
   }
 
-  // ask for the next timer interrupt. this also clears
-  // the interrupt request. 1000000 is about a tenth
-  // of a second.
+  // Add preemption check for MLFQ
+  #ifdef SCHEDULER_MLFQ
+  check_preemption();
+  #endif
+
+  // ask for the next timer interrupt
   w_stimecmp(r_time() + 1000000);
 }
 
