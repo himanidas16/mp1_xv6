@@ -104,4 +104,11 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+
+  // Scheduling fields
+  int ctime;                   // Creation time (for FCFS)
+  int vruntime;               // Virtual runtime (for CFS) 
+  int rtime;                  // Total running time
+  int weight;                 // Process weight (for CFS)
+  int nice;                   // Nice value (for CFS)
 };

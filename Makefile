@@ -60,6 +60,13 @@ OBJCOPY = $(TOOLPREFIX)objcopy
 OBJDUMP = $(TOOLPREFIX)objdump
 
 CFLAGS = -Wall -Werror -O -fno-omit-frame-pointer -ggdb -gdwarf-2
+
+# Add scheduler support
+ifndef SCHEDULER
+SCHEDULER := RR
+endif
+
+CFLAGS += -DSCHEDULER_$(SCHEDULER)
 CFLAGS += -MD
 CFLAGS += -mcmodel=medany
 CFLAGS += -ffreestanding
@@ -142,6 +149,11 @@ UPROGS=\
 	$U/_logstress\
 	$U/_forphan\
 	$U/_dorphan\
+	$U/_readcount\
+	$U/_schedtest\
+	$U/_simpletest\
+	$U/_schedulertest
+
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)
