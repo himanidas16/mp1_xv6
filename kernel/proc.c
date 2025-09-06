@@ -15,6 +15,9 @@ struct proc *initproc;
 int nextpid = 1;
 struct spinlock pid_lock;
 
+extern uint ticks; // For MLFQ starvation prevention
+
+
 extern void forkret(void);
 static void freeproc(struct proc *p);
 
@@ -68,6 +71,69 @@ int calculate_weight(int nice)
 
   // Return weight from table (offset by 20 for negative indices)
   return weight_table[nice + 20];
+}
+
+// ADD THESE MLFQ HELPER FUNCTIONS:
+
+// Get time slice for a queue level
+int get_time_slice(int queue_level) {
+  switch(queue_level) {
+    case 0: return 1;   // 1 tick
+    case 1: return 4;   // 4 ticks  
+    case 2: return 8;   // 8 ticks
+    case 3: return 16;  // 16 ticks
+    default: return 1;
+  }
+}
+
+// Move process to next lower queue (demotion due to time slice expiry)
+void demote_process(struct proc *p) {
+  if(p->queue_level < 3) {
+    p->queue_level++;
+  }
+  p->time_slice_used = 0;
+  p->queue_entry_time = ticks;  // Update queue entry time
+}
+
+// Reset process to highest queue (for starvation prevention)
+void promote_to_top(struct proc *p) {
+  p->queue_level = 0;
+  p->time_slice_used = 0;
+  p->queue_entry_time = ticks;  // Update queue entry time
+}
+
+// Check if starvation prevention is needed (every 48 ticks)
+void check_starvation_prevention() {
+  static int last_boost = 0;
+  if(ticks - last_boost >= 48) {
+    int promoted_count = 0;
+    int user_processes_exist = 0;
+    
+    // First check if there are any user processes that need promotion
+    for(struct proc *p = proc; p < &proc[NPROC]; p++) {
+      acquire(&p->lock);
+      if(p->state != UNUSED && p->pid > 2) {  // User processes only
+        user_processes_exist = 1;
+        if(p->queue_level > 0) {
+          printf("Promoting PID %d from Queue %d to Queue 0\n", p->pid, p->queue_level);
+          promote_to_top(p);
+          promoted_count++;
+        }
+      }
+      release(&p->lock);
+    }
+    
+    // Only print starvation prevention message if there were actual promotions
+    if (promoted_count > 0) {
+      printf("*** STARVATION PREVENTION TRIGGERED AT TICK %d ***\n", ticks);
+      printf("*** STARVATION PREVENTION: Promoted %d processes ***\n", promoted_count);
+    }
+    
+    // Reset timer only if there were user processes (otherwise keep checking more frequently)
+    if (user_processes_exist || promoted_count > 0) {
+      last_boost = ticks;
+    }
+  }
 }
 
 
@@ -163,6 +229,14 @@ found:
   // To this:
   p->nice = 0;                           // Default nice value
   p->weight = calculate_weight(p->nice); // Calculate weight based on nice
+
+
+  // ADD THESE MLFQ INITIALIZATIONS:
+p->queue_level = 0;          // Start in highest priority queue
+p->time_slice_used = 0;      // No time used initially
+p->last_scheduled = ticks;   // Set to current time
+p->queue_entry_time = ticks;  // Initialize queue entry time
+
 
   // Allocate a trapframe page.
   if ((p->trapframe = (struct trapframe *)kalloc()) == 0)
@@ -463,53 +537,7 @@ int kwait(uint64 addr)
   }
 }
 
-// Per-CPU process scheduler.
-// Each CPU calls scheduler() after setting itself up.
-// Scheduler never returns.  It loops, doing:
-//  - choose a process to run.
-//  - swtch to start running that process.
-//  - eventually that process transfers control
-//    via swtch back to the scheduler.
-// void
-// scheduler(void)
-// {
-//   struct proc *p;
-//   struct cpu *c = mycpu();
 
-//   c->proc = 0;
-//   for(;;){
-//     // The most recent process to run may have had interrupts
-//     // turned off; enable them to avoid a deadlock if all
-//     // processes are waiting. Then turn them back off
-//     // to avoid a possible race between an interrupt
-//     // and wfi.
-//     intr_on();
-//     intr_off();
-
-//     int found = 0;
-//     for(p = proc; p < &proc[NPROC]; p++) {
-//       acquire(&p->lock);
-//       if(p->state == RUNNABLE) {
-//         // Switch to chosen process.  It is the process's job
-//         // to release its lock and then reacquire it
-//         // before jumping back to us.
-//         p->state = RUNNING;
-//         c->proc = p;
-//         swtch(&c->context, &p->context);
-
-//         // Process is done running for now.
-//         // It should have changed its p->state before coming back.
-//         c->proc = 0;
-//         found = 1;
-//       }
-//       release(&p->lock);
-//     }
-//     if(found == 0) {
-//       // nothing to run; stop running on this core until an interrupt.
-//       asm volatile("wfi");
-//     }
-//   }
-// }
 void scheduler(void)
 {
   struct proc *p;
@@ -713,6 +741,94 @@ void scheduler(void)
 
       c->proc = 0;
       release(&earliest->lock);
+    }
+
+#elif defined(SCHEDULER_MLFQ)
+    // MLFQ Scheduler implementation
+    check_starvation_prevention();
+
+    struct proc *selected = 0;
+    int highest_priority = 4;
+    int runnable_count = 0;
+
+    // Count ONLY user processes for runnable count
+    for (p = proc; p < &proc[NPROC]; p++) {
+      acquire(&p->lock);
+      if (p->state == RUNNABLE && p->pid > 2) {  // Skip init(1) and sh(2)
+        runnable_count++;
+      }
+      release(&p->lock);
+    }
+
+    // Log MLFQ state ONLY when multiple USER processes are running
+    if (runnable_count > 1) {
+      printf("[MLFQ Scheduler Tick]\n");
+      for (p = proc; p < &proc[NPROC]; p++) {
+        acquire(&p->lock);
+        if (p->state == RUNNABLE && p->pid > 2) {  // Skip system processes
+          printf("PID: %d | Queue: %d | Time Used: %d/%d\n", 
+                 p->pid, p->queue_level, p->time_slice_used, get_time_slice(p->queue_level));
+        }
+        release(&p->lock);
+      }
+    }
+
+    // Find highest priority runnable process (including system processes)
+    for (p = proc; p < &proc[NPROC]; p++) {
+      acquire(&p->lock);
+      if (p->state == RUNNABLE && p->queue_level < highest_priority) {
+        if (selected != 0) {
+          release(&selected->lock);
+        }
+        selected = p;
+        highest_priority = p->queue_level;
+      } else {
+        release(&p->lock);
+      }
+    }
+
+    if (selected != 0) {
+      if (runnable_count > 1 && selected->pid > 2) {  // Only log user processes
+        printf("--> Scheduling PID %d from Queue %d\n", selected->pid, selected->queue_level);
+      }
+
+      // Run the selected process
+      selected->state = RUNNING;
+      c->proc = selected;
+      selected->last_scheduled = ticks;
+
+      int start_ticks = ticks;
+      int time_slice = get_time_slice(selected->queue_level);
+
+      swtch(&c->context, &selected->context);
+
+      // Process returned to scheduler
+      int ticks_used = ticks - start_ticks;
+      selected->rtime += ticks_used;
+
+      if (selected->state == RUNNABLE) {
+        selected->time_slice_used += ticks_used;
+
+        // Check if time slice is expired
+        if (selected->time_slice_used >= time_slice) {
+          // Time slice expired - demote process
+          int old_queue = selected->queue_level;
+          demote_process(selected);
+          if (selected->pid > 2) {  // Only log user processes
+            printf("PID %d: Time slice expired! Moving from Queue %d to Queue %d\n", 
+                   selected->pid, old_queue, selected->queue_level);
+          }
+        } else {
+          // Process yielded voluntarily - keep in same queue
+          if (selected->pid > 2) {  // Only log user processes
+            printf("PID %d: Voluntary yield, staying in Queue %d (used %d/%d ticks)\n", 
+                   selected->pid, selected->queue_level, selected->time_slice_used, time_slice);
+          }
+        }
+      }
+
+      c->proc = 0;
+      release(&selected->lock);
     }
 
 #else

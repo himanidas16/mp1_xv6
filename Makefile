@@ -152,7 +152,11 @@ UPROGS=\
 	$U/_readcount\
 	$U/_schedtest\
 	$U/_simpletest\
-	$U/_schedulertest
+	$U/_schedulertest\
+	$U/_mlfqtest\
+	$U/_preempttest\
+	$U/_fullmlfqtest\
+	$U/_starvationtest
 
 
 fs.img: mkfs/mkfs README $(UPROGS)

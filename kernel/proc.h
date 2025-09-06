@@ -111,4 +111,10 @@ struct proc {
   int rtime;                  // Total running time
   int weight;                 // Process weight (for CFS)
   int nice;                   // Nice value (for CFS)
+
+  // ADD THESE NEW MLFQ FIELDS:
+  int queue_level;            // Current queue level (0-3)
+  int time_slice_used;        // Time used in current slice
+  int last_scheduled;         // Last time this process was scheduled
+  int queue_entry_time;       // When process entered current queue (for FIFO within queue)
 };
