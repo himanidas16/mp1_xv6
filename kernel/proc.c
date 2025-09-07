@@ -79,7 +79,7 @@ int calculate_weight(int nice)
 int get_time_slice(int queue_level) {
   switch(queue_level) {
     case 0: return 1;   // 1 tick
-    case 1: return 4;   // 4 ticks  
+    case 1: return 4;   // 4 ticks
     case 2: return 8;   // 8 ticks
     case 3: return 16;  // 16 ticks
     default: return 1;
@@ -88,11 +88,11 @@ int get_time_slice(int queue_level) {
 
 // Move process to next lower queue (demotion due to time slice expiry)
 void demote_process(struct proc *p) {
-  if(p->queue_level < 3) {
+  if(p->queue_level < 3) {  // Change from 2 to 3
     p->queue_level++;
   }
   p->time_slice_used = 0;
-  p->queue_entry_time = ticks;  // Update queue entry time
+  p->queue_entry_time = ticks;
 }
 
 // Reset process to highest queue (for starvation prevention)
@@ -114,7 +114,7 @@ void check_starvation_prevention() {
   last_check_tick = ticks;
 
   // Only check every 48 ticks
-  if (ticks - last_boost < 48) {
+  if (ticks - last_boost < 48) {  // Ensure this is 48
     return;
   }
 
