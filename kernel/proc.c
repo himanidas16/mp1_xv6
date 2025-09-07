@@ -114,7 +114,7 @@ void check_starvation_prevention() {
   last_check_tick = ticks;
 
   // Only check every 48 ticks
-  if (ticks - last_boost < 48) {  // Ensure this is 48
+  if (ticks - last_boost < 48) {
     return;
   }
 
@@ -654,31 +654,30 @@ void scheduler(void)
 
       swtch(&c->context, &selected->context);
 
-      // Process returned to scheduler
-      int ticks_used = ticks - start_ticks;
-      selected->rtime += ticks_used;
+// In scheduler() function, after process returns from swtch
+int ticks_used = ticks - start_ticks;
+selected->rtime += ticks_used;
 
-      if (selected->state == RUNNABLE) {
-        selected->time_slice_used += ticks_used;
+if (selected->state == RUNNABLE) {
+  selected->time_slice_used += ticks_used;
 
-        // Check if time slice is expired
-        if (selected->time_slice_used >= time_slice) {
-          // Time slice expired - demote process
-          int old_queue = selected->queue_level;
-          demote_process(selected);
-          if (selected->pid > 2) {
-            printf("PID %d: Time slice expired! Moving from Queue %d to Queue %d\n", 
-                   selected->pid, old_queue, selected->queue_level);
-          }
-        } else {
-          // Process yielded voluntarily - keep in same queue
-          if (selected->pid > 2) {
-            printf("PID %d: Voluntary yield, staying in Queue %d (used %d/%d ticks)\n", 
-                   selected->pid, selected->queue_level, selected->time_slice_used, time_slice);
-          }
-        }
-      }
-
+  // Check if time slice is expired
+  if (selected->time_slice_used >= time_slice) {
+    // Time slice expired - demote process
+    int old_queue = selected->queue_level;
+    demote_process(selected);
+    if (selected->pid > 2) {
+      printf("PID %d: Time slice expired! Moving from Queue %d to Queue %d\n", 
+             selected->pid, old_queue, selected->queue_level);
+    }
+  } else {
+    // Process yielded voluntarily - keep in same queue
+    if (selected->pid > 2) {
+      printf("PID %d: Voluntary yield, staying in Queue %d (used %d/%d ticks)\n", 
+             selected->pid, selected->queue_level, selected->time_slice_used, time_slice);
+    }
+  }
+}
       c->proc = 0;
       release(&selected->lock);
     }
@@ -1126,32 +1125,28 @@ void procdump(void)
 }
 
 // Check if current process should be preempted by higher priority process
-void
-check_preemption(void)
-{
+void check_preemption(void) {
   struct proc *p = myproc();
   
   if(p == 0 || p->state != RUNNING || p->pid <= 2)
     return;
     
   int current_queue = p->queue_level;
-  struct proc *highest_priority_proc = 0;
-  int highest_priority_queue = 4;
+  int should_preempt = 0;
   
-  // Find the highest priority ready process
+  // Check if there's a higher priority process ready
   for(struct proc *check_proc = proc; check_proc < &proc[NPROC]; check_proc++) {
-    if(check_proc != p && check_proc->state == RUNNABLE) {
-      if(check_proc->queue_level < highest_priority_queue) {
-        highest_priority_queue = check_proc->queue_level;
-        highest_priority_proc = check_proc;
-      }
+    acquire(&check_proc->lock);
+    if(check_proc != p && check_proc->state == RUNNABLE && 
+       check_proc->queue_level < current_queue) {
+      should_preempt = 1;
+      release(&check_proc->lock);
+      break;
     }
+    release(&check_proc->lock);
   }
   
-  // Preempt if we found a higher priority process
-  if(highest_priority_proc && highest_priority_queue < current_queue) {
-    printf("\n*** PREEMPTION: PID %d (Q%d) preempted by PID %d (Q%d) ***\n", 
-           p->pid, current_queue, highest_priority_proc->pid, highest_priority_queue);
+  if(should_preempt) {
     yield();
   }
 }

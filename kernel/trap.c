@@ -161,9 +161,7 @@ kerneltrap()
   w_sstatus(sstatus);
 }
 
-void
-clockintr()
-{
+void clockintr() {
   if(cpuid() == 0){
     acquire(&tickslock);
     ticks++;
@@ -171,12 +169,11 @@ clockintr()
     release(&tickslock);
   }
 
-  // Add preemption check for MLFQ
   #ifdef SCHEDULER_MLFQ
-  check_preemption();
+  check_starvation_prevention();
+  check_preemption();  // Add this line
   #endif
 
-  // ask for the next timer interrupt
   w_stimecmp(r_time() + 1000000);
 }
 

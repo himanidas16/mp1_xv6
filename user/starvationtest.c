@@ -25,24 +25,67 @@ cpu_intensive_process(int id)
   exit(0);
 }
 
-int
-main(int argc, char *argv[])
-{
-  printf("=== Starvation Prevention Test ===\n");
-  printf("Starting multiple CPU-intensive processes to trigger starvation prevention...\n");
+// Add this function to user/starvationtest.c
+void test_48_tick_timing() {
+  printf("=== 48-Tick Starvation Prevention Verification ===\n");
   
-  // Start 3 CPU-intensive processes
+  int start_time = uptime();
+  printf("Test started at tick: %d\n", start_time);
+  
+  // Create processes that will demonstrate starvation prevention
   for(int i = 1; i <= 3; i++) {
     if(fork() == 0) {
-      cpu_intensive_process(i);
+      // Long CPU work to get demoted and trigger starvation prevention
+      for(volatile long j = 0; j < 50000000L; j++) {
+        if(j % 10000000 == 0) {
+          printf("Process %d: %ldM iterations at tick %d\n", i, j/1000000, uptime());
+        }
+      }
+      exit(0);
     }
   }
   
-  // Wait for all children to complete
+  // Parent waits and monitors
   for(int i = 0; i < 3; i++) {
     wait(0);
   }
   
-  printf("=== Starvation test completed ===\n");
+  int end_time = uptime();
+  printf("Test completed at tick: %d (duration: %d ticks)\n", end_time, end_time - start_time);
+  printf("Expected to see starvation prevention every 48 ticks\n");
+}
+
+// Modify main function
+int main(int argc, char *argv[]) {
+  if(argc > 1 && strcmp(argv[1], "timing") == 0) {
+    test_48_tick_timing();
+  } else {
+    // Your existing starvation test code
+    printf("=== Starvation Prevention Test ===\n");
+    // ... rest of existing code
+  }
   exit(0);
 }
+
+
+// int
+// main(int argc, char *argv[])
+// {
+//   printf("=== Starvation Prevention Test ===\n");
+//   printf("Starting multiple CPU-intensive processes to trigger starvation prevention...\n");
+  
+//   // Start 3 CPU-intensive processes
+//   for(int i = 1; i <= 3; i++) {
+//     if(fork() == 0) {
+//       cpu_intensive_process(i);
+//     }
+//   }
+  
+//   // Wait for all children to complete
+//   for(int i = 0; i < 3; i++) {
+//     wait(0);
+//   }
+  
+//   printf("=== Starvation test completed ===\n");
+//   exit(0);
+// }
