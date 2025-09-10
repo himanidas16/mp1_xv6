@@ -81,8 +81,13 @@ usertrap(void)
     kexit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
-    yield();
+// give up the CPU if this is a timer interrupt.
+// BUT NOT for FCFS scheduler (which should be non-preemptive)
+if(which_dev == 2) {
+#ifndef SCHEDULER_FCFS
+  yield();
+#endif
+}
 
   prepare_return();
 
@@ -152,8 +157,13 @@ kerneltrap()
   }
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2 && myproc() != 0)
-    yield();
+// give up the CPU if this is a timer interrupt.
+// BUT NOT for FCFS scheduler (which should be non-preemptive)
+if(which_dev == 2 && myproc() != 0) {
+#ifndef SCHEDULER_FCFS
+  yield();
+#endif
+}
 
   // the yield() may have caused some traps to occur,
   // so restore trap registers for use by kernelvec.S's sepc instruction.

@@ -103,57 +103,49 @@ void promote_to_top(struct proc *p) {
 }
 
 // Check if starvation prevention is needed (every 48 ticks)
+// Check if starvation prevention is needed (every 48 ticks)
 void check_starvation_prevention() {
   static int last_boost = 0;
-  static int last_check_tick = -1;
-
-  // Prevent multiple calls on the same tick from different CPUs
-  if (last_check_tick == ticks) {
-    return;
-  }
-  last_check_tick = ticks;
-
-  // Only check every 48 ticks
-  if (ticks - last_boost < 48) {
-    return;
-  }
-
-  // Check if there are user processes that need promotion
-  int processes_needing_promotion = 0;
-
+  
+  // First check if there are any user processes running at all
+  int user_processes = 0;
   for (struct proc *p = proc; p < &proc[NPROC]; p++) {
     acquire(&p->lock);
-    if (p->state != UNUSED && p->pid > 2) {
-      if (p->queue_level > 0) {
-        processes_needing_promotion++;
-      }
+    if (p->state != UNUSED && p->pid > 2) {  // Exclude init and shell
+      user_processes++;
     }
     release(&p->lock);
   }
-
-  // Reset timer regardless
-  last_boost = ticks;
-
-  // Only act if there are user processes needing promotion
-  if (processes_needing_promotion > 0) {
+  
+  // Only proceed if there are user processes
+  if (user_processes == 0) {
+    return;  // No user processes, no need for starvation prevention
+  }
+  
+  // Check every tick, but only act every 48 ticks
+  if (ticks - last_boost >= 48) {
+    last_boost = ticks;
+    
     printf("\n*** STARVATION PREVENTION TRIGGERED AT TICK %d ***\n", ticks);
-
+    
     int promoted_count = 0;
     for (struct proc *p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
-      if (p->state != UNUSED && p->pid > 2 && p->queue_level > 0) {
-        printf("Promoting PID %d from Queue %d to Queue 0\n", p->pid, p->queue_level);
-        promote_to_top(p);
-        promoted_count++;
+      if (p->state != UNUSED && p->pid > 2) {  // Exclude init and shell
+        if (p->queue_level > 0) {
+          printf("Promoting PID %d from Queue %d to Queue 0\n", p->pid, p->queue_level);
+          promote_to_top(p);
+          promoted_count++;
+        }
       }
       release(&p->lock);
     }
-
-    printf("*** STARVATION PREVENTION: Promoted %d processes ***\n\n", promoted_count);
+    
+    if (promoted_count > 0) {
+      printf("*** STARVATION PREVENTION: Promoted %d processes ***\n\n", promoted_count);
+    }
   }
 }
-
-
 
 // initialize the proc table.
 void procinit(void)
@@ -654,30 +646,31 @@ void scheduler(void)
 
       swtch(&c->context, &selected->context);
 
-// In scheduler() function, after process returns from swtch
-int ticks_used = ticks - start_ticks;
-selected->rtime += ticks_used;
+      // Process returned to scheduler
+      int ticks_used = ticks - start_ticks;
+      selected->rtime += ticks_used;
 
-if (selected->state == RUNNABLE) {
-  selected->time_slice_used += ticks_used;
+      if (selected->state == RUNNABLE) {
+        selected->time_slice_used += ticks_used;
 
-  // Check if time slice is expired
-  if (selected->time_slice_used >= time_slice) {
-    // Time slice expired - demote process
-    int old_queue = selected->queue_level;
-    demote_process(selected);
-    if (selected->pid > 2) {
-      printf("PID %d: Time slice expired! Moving from Queue %d to Queue %d\n", 
-             selected->pid, old_queue, selected->queue_level);
-    }
-  } else {
-    // Process yielded voluntarily - keep in same queue
-    if (selected->pid > 2) {
-      printf("PID %d: Voluntary yield, staying in Queue %d (used %d/%d ticks)\n", 
-             selected->pid, selected->queue_level, selected->time_slice_used, time_slice);
-    }
-  }
-}
+        // Check if time slice is expired
+        if (selected->time_slice_used >= time_slice) {
+          // Time slice expired - demote process
+          int old_queue = selected->queue_level;
+          demote_process(selected);
+          if (selected->pid > 2) {
+            printf("PID %d: Time slice expired! Moving from Queue %d to Queue %d\n", 
+                   selected->pid, old_queue, selected->queue_level);
+          }
+        } else {
+          // Process yielded voluntarily - keep in same queue
+          if (selected->pid > 2) {
+            printf("PID %d: Voluntary yield, staying in Queue %d (used %d/%d ticks)\n", 
+                   selected->pid, selected->queue_level, selected->time_slice_used, time_slice);
+          }
+        }
+      }
+
       c->proc = 0;
       release(&selected->lock);
     }

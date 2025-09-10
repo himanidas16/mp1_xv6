@@ -49,3 +49,4 @@ void* malloc(uint);
 void free(void*);
 
 int getreadcount(void);
+// int sleep(int);
